@@ -13,183 +13,106 @@ async function log(message, level = "info") {
   }
 }
 
-// Create authenticated API client using environment variables
-async function createAuthenticatedClient() {
-  // Get password from environment (set by Desktop)
-  const password = process.env.OPENCODE_SERVER_PASSWORD;
-  if (!password) {
-    await log("OPENCODE_SERVER_PASSWORD not in environment", "error");
-    return null;
-  }
-  
-  // Create Basic Auth header
-  const auth = Buffer.from(`opencode:${password}`).toString('base64');
-  
-  // Find server port
-  const port = await findServerPort();
-  if (!port) {
-    await log("Could not find server port", "error");
-    return null;
-  }
-  
-  const baseUrl = `http://127.0.0.1:${port}`;
-  await log(`Creating authenticated client for ${baseUrl}`);
-  
-  // Return API client object
-  return {
-    baseUrl,
-    authHeader: `Basic ${auth}`,
-    
-    // Session update method
-    async updateSession(sessionID, directory, title) {
-      const response = await fetch(`${baseUrl}/session/${sessionID}`, {
-        method: 'PUT',
-        headers: {
-          'Authorization': `Basic ${auth}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          directory,
-          title,
-        }),
-      });
-      
-      if (!response.ok) {
-        throw new Error(`HTTP ${response.status}: ${await response.text()}`);
-      }
-      
-      return await response.json();
-    },
-    
-    // Session prompt method (for context)
-    async sendPrompt(sessionID, text) {
-      const response = await fetch(`${baseUrl}/session/${sessionID}/prompt`, {
-        method: 'POST',
-        headers: {
-          'Authorization': `Basic ${auth}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          noReply: true,
-          parts: [{ type: 'text', text }],
-        }),
-      });
-      
-      if (!response.ok) {
-        throw new Error(`HTTP ${response.status}: ${await response.text()}`);
-      }
-      
-      return await response.json();
-    },
-  };
-}
-
-// Find OpenCode server port
-async function findServerPort() {
-  try {
-    // Try to get from process
-    const result = await Bun.$`lsof -i TCP -P 2>/dev/null | grep opencode | grep LISTEN | head -1`.nothrow();
-    if (result.exitCode === 0 && result.stdout) {
-      const match = result.stdout.match(/:(\d+)/);
-      if (match) {
-        return parseInt(match[1], 10);
-      }
-    }
-  } catch {
-    // Fallback to common ports
-    const ports = [52033, 51314, 51181, 51045, 50132, 4096];
-    for (const port of ports) {
-      try {
-        const controller = new AbortController();
-        const timeout = setTimeout(() => controller.abort(), 300);
-        const response = await fetch(`http://127.0.0.1:${port}/health`, {
-          signal: controller.signal,
-        });
-        clearTimeout(timeout);
-        if (response.ok || response.status === 401) {
-          return port;
-        }
-      } catch {
-        // Continue
-      }
-    }
-  }
-  return null;
-}
-
 export default async function autoSessionPlugin(args, context) {
-  await log("=== AUTO-SESSION PLUGIN INITIALIZED ===");
-  await log("Using environment-based authentication");
-  
-  // Log env availability (don't log the actual password!)
-  const hasPassword = !!process.env.OPENCODE_SERVER_PASSWORD;
-  await log(`OPENCODE_SERVER_PASSWORD available: ${hasPassword}`);
+  // Log ALL properties from PluginInput
+  await log("=== PLUGIN INITIALIZED ===");
+  await log(`All context keys: ${Object.keys(context || {}).join(", ")}`);
+  await log(`serverUrl: ${context?.serverUrl || "NOT FOUND"}`);
+  await log(`directory: ${context?.directory || "NOT FOUND"}`);
+  await log(`sessionID from context: ${context?.sessionID || "NOT FOUND"}`);
+  await log(`has client: ${!!context?.client}`);
+  await log(`has $ (BunShell): ${!!context?.$}`);
+  await log(`has project: ${!!context?.project}`);
 
   return {
     "tool.execute.after": async (input, output, hookContext) => {
-      await log(`Hook fired for tool: ${input?.tool || 'unknown'}`);
+      await log(`Hook fired: ${input.tool}`);
+      await log(`Input sessionID: ${input.sessionID || "NOT FOUND"}`);
 
       // Check for WORKTREE trigger
-      if (input.tool === "bash") {
-        const bashOutput = output?.metadata?.output || output?.output || "";
-        await log(`Bash output: ${bashOutput?.substring(0, 100)}`);
-        const worktreeMatch = bashOutput.match(/WORKTREE:(\/[^:]+):(\d+):(.+)/);
-        
-        if (worktreeMatch) {
-          await log("🎯 WORKTREE trigger detected!");
-          
-          const worktreePath = worktreeMatch[1];
-          const issueNum = worktreeMatch[2];
-          const issueTitle = worktreeMatch[3];
-          const sessionID = input?.sessionID;
-          
-          await log(`Worktree: ${worktreePath}`);
-          await log(`Issue: #${issueNum} - ${issueTitle}`);
-          await log(`Session ID: ${sessionID || 'unknown'}`);
-          
-          if (!sessionID) {
-            await log("No sessionID available", "error");
-            console.log(`[auto-session] ⚠️  Manual: cd ${worktreePath}`);
-            return;
-          }
-          
-          // Create authenticated client and update session
-          try {
-            await log("Creating authenticated client...");
-            const client = await createAuthenticatedClient();
-            
-            if (!client) {
-              await log("Failed to create client", "error");
-              console.log(`[auto-session] ⚠️  Manual: cd ${worktreePath}`);
-              return;
-            }
-            
-            await log("Updating session...");
-            await client.updateSession(
-              sessionID,
-              worktreePath,
-              `Issue #${issueNum}: ${issueTitle}`
-            );
-            await log("✅ Session updated!", "success");
-            
-            // Send context
-            await client.sendPrompt(
-              sessionID,
-              `## GitHub Issue #${issueNum}\n\n**${issueTitle}**\n\nNow working in worktree: ${worktreePath}`
-            );
-            await log("✅ Context sent!", "success");
-            
-            console.log(`[auto-session] ✅ Switched to worktree: ${worktreePath}`);
-            
-          } catch (e) {
-            await log(`Failed: ${e.message}`, "error");
-            console.log(`[auto-session] ⚠️  Manual: cd ${worktreePath}`);
-          }
-        }
+      if (input.tool !== "bash") return;
+
+      const bashOutput = output?.metadata?.output || output?.output || "";
+      await log(`Bash output: ${bashOutput.substring(0, 100)}`);
+
+      const match = bashOutput.match(/WORKTREE:(\/[^:]+):(\d+):(.+)/);
+      if (!match) return;
+
+      await log("🎯 WORKTREE detected!");
+      const worktreePath = match[1];
+      const issueNum = match[2];
+      const issueTitle = match[3];
+      const sessionID = input.sessionID;
+
+      await log(`Path: ${worktreePath}`);
+      await log(`Session: ${sessionID || "NOT FOUND"}`);
+
+      if (!sessionID) {
+        await log("No sessionID - cannot update", "error");
         return;
       }
-      
-      return;
+
+      // Try to update session using serverUrl
+      const serverUrl = context?.serverUrl;
+      if (!serverUrl) {
+        await log("No serverUrl in context", "error");
+        console.log(`[auto-session] Manual: cd ${worktreePath}`);
+        return;
+      }
+
+      try {
+        await log(`Using serverUrl: ${serverUrl}`);
+
+        // Get password from environment
+        const password = process.env.OPENCODE_SERVER_PASSWORD;
+        if (!password) {
+          await log("No OPENCODE_SERVER_PASSWORD", "error");
+          return;
+        }
+
+        const auth = Buffer.from(`opencode:${password}`).toString("base64");
+
+        // Update session via REST API
+        const response = await fetch(`${serverUrl}/session/${sessionID}`, {
+          method: "PUT",
+          headers: {
+            Authorization: `Basic ${auth}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            directory: worktreePath,
+            title: `Issue #${issueNum}: ${issueTitle}`,
+          }),
+        });
+
+        if (response.ok) {
+          await log("✅ Session updated!", "success");
+          console.log(`[auto-session] ✅ Switched to: ${worktreePath}`);
+
+          // Send context
+          await fetch(`${serverUrl}/session/${sessionID}/prompt`, {
+            method: "POST",
+            headers: {
+              Authorization: `Basic ${auth}`,
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+              noReply: true,
+              parts: [
+                {
+                  type: "text",
+                  text: `## Issue #${issueNum}: ${issueTitle}\n\nWorking in: ${worktreePath}`,
+                },
+              ],
+            }),
+          });
+        } else {
+          await log(`HTTP ${response.status}: ${await response.text()}`, "error");
+        }
+      } catch (e) {
+        await log(`Error: ${e.message}`, "error");
+        console.log(`[auto-session] Manual: cd ${worktreePath}`);
+      }
     },
   };
 }
