@@ -1,0 +1,3 @@
+Design AGENTS.md describing agent roles and workflows.
+
+VERBOSITY: low.

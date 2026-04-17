@@ -1,0 +1,42 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "OpenCode Issue Workflow Configuration",
+  "type": "object",
+  "properties": {
+    "branchPrefix": {
+      "type": "object",
+      "description": "Mapping of GitHub issue labels to branch prefixes",
+      "additionalProperties": {
+        "type": "string",
+        "description": "Branch prefix for matching labels"
+      },
+      "examples": [
+        {
+          "bug": "fix/",
+          "fix": "fix/",
+          "documentation": "docs/",
+          "feature": "feat/",
+          "chore": "chore/"
+        }
+      ]
+    },
+    "baseBranch": {
+      "type": "string",
+      "description": "Base branch to create worktree from",
+      "default": "main",
+      "examples": ["main", "master", "develop", "release/v1.0"]
+    },
+    "worktreeRoot": {
+      "type": "string",
+      "description": "Root directory for worktrees. Supports $REPO placeholder.",
+      "default": ".worktrees/$REPO",
+      "examples": [".worktrees/$REPO", "~/worktrees/$REPO", ".git/worktrees/$REPO"]
+    },
+    "autoStart": {
+      "type": "boolean",
+      "description": "Automatically start the agent after user confirms worktree creation",
+      "default": false
+    }
+  },
+  "additionalProperties": false
+}

@@ -1,0 +1,10 @@
+{
+  "type": "module",
+  "dependencies": {
+    "@opencode-ai/plugin": "1.4.7",
+    "jsonc-parser": "^3.3.1"
+  },
+  "devDependencies": {
+    "typescript": "^6.0.3"
+  }
+}

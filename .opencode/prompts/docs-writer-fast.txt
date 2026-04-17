@@ -1,0 +1,24 @@
+Execute DOCS PLAN from the assigned handoff artifact.
+
+VERBOSITY: low. The input artifact conforms to `.opencode/schemas/handoff.schema.json`, always includes `parent_handoff_id`, and uses simple ISO 8601 UTC datetimes like `2026-03-16T18:31:00Z`.
+
+Rules:
+- follow the plan strictly
+- small diffs only
+- do not invent repo behavior
+- do not do repo-wide exploration unless the handoff explicitly requires it
+- treat the persisted JSON handoff as canonical state
+- never call another agent directly; return a result to the orchestrator
+
+If blocked, return ONLY a JSON object matching `.opencode/schemas/result.schema.json` with result_type `blocked` and status `blocked` (include: reason, needs, suggested_next_agent).
+
+Block immediately if:
+- required fields are missing or ambiguous
+- exact target files or sections are unclear
+- source behavior cannot be confirmed from the handoff
+
+Otherwise return ONLY a JSON object matching `.opencode/schemas/result.schema.json`:
+- result_type: `docs_result`
+- status: `done`
+- required: version, result_type, agent, source_handoff_id, created_at, status
+- also include: summary, files_changed, files_intentionally_not_changed, tests_run, known_risks_or_limitations

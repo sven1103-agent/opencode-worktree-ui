@@ -1,0 +1,146 @@
+{
+  "$schema": "https://opencode.ai/config.json",
+  "plugin": ["/Users/sven1103/git/opencode-worktree-ui/.opencode/plugins/test-session.js"],
+  "default_agent": "docs",
+  "model": "opencode/kimi-k2.5",
+  "small_model": "opencode/big-pickle",
+  "provider": {
+    "opencode": {
+      "models": {
+        "kimi-k2.5": {
+          "options": {
+            "reasoningEffort": "medium"
+          }
+        },
+        "big-pickle": {
+          "options": {
+            "reasoningEffort": "medium"
+          }
+        }
+      }
+    }
+  },
+  "agent": {
+    "coding-boss": {
+      "description": "Routes coding work by phase",
+      "mode": "primary",
+      "color": "#BEEE62",
+      "model": "opencode/kimi-k2.5",
+      "prompt": "{file:.opencode/prompts/coding-boss.txt}",
+      "permission": {
+        "task": {
+          "*": "deny",
+          "planner": "allow",
+          "implementer-small": "allow",
+          "implementer": "allow",
+          "code-reviewer": "allow"
+        },
+        "write": "allow",
+        "edit": "allow",
+        "bash": "allow"
+      }
+    },
+    "planner": {
+      "description": "Creates compact execution-ready plans",
+      "mode": "subagent",
+      "model": "opencode/kimi-k2.5",
+      "prompt": "{file:.opencode/prompts/planner.txt}",
+      "permission": {
+        "write": "deny",
+        "edit": "deny",
+        "bash": "ask"
+      }
+    },
+    "implementer-small": {
+      "description": "Cheap execution agent for trivial tasks",
+      "mode": "subagent",
+      "model": "opencode/big-pickle",
+      "prompt": "{file:.opencode/prompts/implementer-small.txt}",
+      "permission": {
+        "write": "allow",
+        "edit": "allow",
+        "bash": "allow"
+      }
+    },
+    "implementer": {
+      "description": "Primary implementation agent",
+      "mode": "subagent",
+      "model": "opencode/big-pickle",
+      "prompt": "{file:.opencode/prompts/implementer.txt}",
+      "permission": {
+        "write": "allow",
+        "edit": "allow",
+        "bash": "allow"
+      }
+    },
+    "code-reviewer": {
+      "description": "Reviews implementation",
+      "mode": "subagent",
+      "model": "opencode/kimi-k2.5",
+      "prompt": "{file:.opencode/prompts/code-reviewer.txt}",
+      "permission": {
+        "write": "deny",
+        "edit": "deny",
+        "bash": "ask"
+      }
+    },
+    "docs": {
+      "description": "Documentation router",
+      "mode": "primary",
+      "color": "#D74E09",
+      "model": "opencode/kimi-k2.5",
+      "prompt": "{file:.opencode/prompts/docs.txt}",
+      "permission": {
+        "task": {
+          "*": "deny",
+          "docs-planner": "allow",
+          "docs-writer-fast": "allow",
+          "docs-reviewer": "allow",
+          "agent-architect": "allow"
+        },
+        "write": "allow",
+        "edit": "allow"
+      }
+    },
+    "docs-planner": {
+      "description": "Plans documentation work",
+      "mode": "subagent",
+      "model": "opencode/kimi-k2.5",
+      "prompt": "{file:.opencode/prompts/docs-planner.txt}",
+      "permission": {
+        "write": "deny",
+        "edit": "deny"
+      }
+    },
+    "docs-writer-fast": {
+      "description": "Documentation execution agent",
+      "mode": "subagent",
+      "model": "opencode/big-pickle",
+      "prompt": "{file:.opencode/prompts/docs-writer-fast.txt}",
+      "permission": {
+        "write": "allow",
+        "edit": "allow"
+      }
+    },
+    "docs-reviewer": {
+      "description": "Reviews documentation",
+      "mode": "subagent",
+      "model": "opencode/kimi-k2.5",
+      "prompt": "{file:.opencode/prompts/docs-reviewer.txt}",
+      "permission": {
+        "write": "deny",
+        "edit": "deny"
+      }
+    },
+    "agent-architect": {
+      "description": "Designs AGENTS.md",
+      "mode": "subagent",
+      "model": "opencode/kimi-k2.5",
+      "prompt": "{file:.opencode/prompts/agent-architect.txt}",
+      "permission": {
+        "write": "deny",
+        "edit": "deny"
+      }
+    }
+  }
+}

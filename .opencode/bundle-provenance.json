@@ -1,0 +1,51 @@
+{
+  "source_id": "49890611",
+  "source_name": "opencode-config-bundle",
+  "source_type": "github-release",
+  "bundle_version": "1.0.0-alpha.6",
+  "preset_name": "kimi",
+  "entrypoint": "opencode.kimi.json",
+  "applied_at": "2026-03-31T00:00:00Z",
+  "installed_assets": [
+    {
+      "source": "prompts/coding-boss.txt",
+      "destination": "/Users/sven1103/git/opencode-worktree-ui/.opencode/prompts/coding-boss.txt"
+    },
+    {
+      "source": "prompts/planner.txt",
+      "destination": "/Users/sven1103/git/opencode-worktree-ui/.opencode/prompts/planner.txt"
+    },
+    {
+      "source": "prompts/implementer-small.txt",
+      "destination": "/Users/sven1103/git/opencode-worktree-ui/.opencode/prompts/implementer-small.txt"
+    },
+    {
+      "source": "prompts/implementer.txt",
+      "destination": "/Users/sven1103/git/opencode-worktree-ui/.opencode/prompts/implementer.txt"
+    },
+    {
+      "source": "prompts/code-reviewer.txt",
+      "destination": "/Users/sven1103/git/opencode-worktree-ui/.opencode/prompts/code-reviewer.txt"
+    },
+    {
+      "source": "prompts/docs.txt",
+      "destination": "/Users/sven1103/git/opencode-worktree-ui/.opencode/prompts/docs.txt"
+    },
+    {
+      "source": "prompts/docs-planner.txt",
+      "destination": "/Users/sven1103/git/opencode-worktree-ui/.opencode/prompts/docs-planner.txt"
+    },
+    {
+      "source": "prompts/docs-writer-fast.txt",
+      "destination": "/Users/sven1103/git/opencode-worktree-ui/.opencode/prompts/docs-writer-fast.txt"
+    },
+    {
+      "source": "prompts/docs-reviewer.txt",
+      "destination": "/Users/sven1103/git/opencode-worktree-ui/.opencode/prompts/docs-reviewer.txt"
+    },
+    {
+      "source": "prompts/agent-architect.txt",
+      "destination": "/Users/sven1103/git/opencode-worktree-ui/.opencode/prompts/agent-architect.txt"
+    }
+  ]
+}

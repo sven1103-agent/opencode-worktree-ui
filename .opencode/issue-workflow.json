@@ -1,0 +1,17 @@
+{
+  "$schema": "./schemas/config.schema.json",
+  "branchPrefix": {
+    "bug": "fix/",
+    "fix": "fix/",
+    "documentation": "docs/",
+    "feature": "feat/",
+    "chore": "chore/",
+    "enhancement": "feat/",
+    "question": "question/",
+    "help wanted": "help/",
+    "good first issue": "starter/"
+  },
+  "baseBranch": "main",
+  "worktreeRoot": ".worktrees/$REPO",
+  "autoStart": false
+}
