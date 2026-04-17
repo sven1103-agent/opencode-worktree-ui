@@ -17,7 +17,36 @@ async function log(message, level = "info") {
 // Try to find OpenCode Desktop server port
 async function findDesktopPort() {
   try {
-    const ports = [50132, 50329, 4096, 8080, 3000, 5000, 50133, 50134];
+    // First try to detect from running process (most reliable)
+    try {
+      const result = await Bun.$`lsof -i TCP -P 2>/dev/null | grep opencode | grep LISTEN | head -1`.nothrow();
+      if (result.exitCode === 0 && result.stdout) {
+        const match = result.stdout.match(/:(\d+)/);
+        if (match) {
+          const port = parseInt(match[1], 10);
+          // Verify it's actually responding
+          try {
+            const controller = new AbortController();
+            const timeout = setTimeout(() => controller.abort(), 500);
+            const response = await fetch(`http://127.0.0.1:${port}/health`, {
+              signal: controller.signal
+            });
+            clearTimeout(timeout);
+            if (response.ok || response.status === 401) {
+              await log(`Found Desktop on port ${port} from process`);
+              return port;
+            }
+          } catch {
+            // Port from lsof not responding
+          }
+        }
+      }
+    } catch {
+      // lsof not available or failed
+    }
+    
+    // Fallback to known ports
+    const ports = [51181, 51045, 50132, 50329, 4096, 8080, 3000, 5000, 50133, 50134];
     
     for (const port of ports) {
       try {
@@ -29,7 +58,7 @@ async function findDesktopPort() {
         });
         clearTimeout(timeout);
         
-        if (response.ok) {
+        if (response.ok || response.status === 401) {
           await log(`Found OpenCode server on port ${port}`);
           return port;
         }
