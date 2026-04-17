@@ -14,131 +14,67 @@ async function log(message, level = "info") {
   }
 }
 
-// Try to find OpenCode Desktop server port
-async function findDesktopPort() {
-  try {
-    // First try to detect from running process (most reliable)
-    try {
-      const result = await Bun.$`lsof -i TCP -P 2>/dev/null | grep opencode | grep LISTEN | head -1`.nothrow();
-      if (result.exitCode === 0 && result.stdout) {
-        const match = result.stdout.match(/:(\d+)/);
-        if (match) {
-          const port = parseInt(match[1], 10);
-          // Verify it's actually responding
-          try {
-            const controller = new AbortController();
-            const timeout = setTimeout(() => controller.abort(), 500);
-            const response = await fetch(`http://127.0.0.1:${port}/health`, {
-              signal: controller.signal
-            });
-            clearTimeout(timeout);
-            if (response.ok || response.status === 401) {
-              await log(`Found Desktop on port ${port} from process`);
-              return port;
-            }
-          } catch {
-            // Port from lsof not responding
-          }
-        }
-      }
-    } catch {
-      // lsof not available or failed
-    }
-    
-    // Fallback to known ports
-    const ports = [51181, 51045, 50132, 50329, 4096, 8080, 3000, 5000, 50133, 50134];
-    
-    for (const port of ports) {
-      try {
-        const controller = new AbortController();
-        const timeout = setTimeout(() => controller.abort(), 300);
-        
-        const response = await fetch(`http://127.0.0.1:${port}/health`, {
-          signal: controller.signal
-        });
-        clearTimeout(timeout);
-        
-        if (response.ok || response.status === 401) {
-          await log(`Found OpenCode server on port ${port}`);
-          return port;
-        }
-      } catch {
-        // Port not responding, try next
-      }
-    }
-  } catch (e) {
-    await log(`Error finding port: ${e.message}`, "error");
-  }
-  return null;
-}
-
-// Create SDK client connected to Desktop
-async function createDesktopClient() {
-  const port = await findDesktopPort();
-  if (!port) {
-    await log("Could not find Desktop server port", "error");
+// Create SDK client from serverUrl
+async function createClientFromContext(context) {
+  const serverUrl = context?.serverUrl;
+  
+  if (!serverUrl) {
+    await log("No serverUrl in context", "error");
     return null;
   }
   
-  const baseUrl = `http://127.0.0.1:${port}`;
+  const baseUrl = serverUrl.toString();
   await log(`Creating SDK client for ${baseUrl}`);
   
   try {
     const client = createOpencodeClient({ baseUrl });
-    const health = await client.global.health();
-    await log(`Connected to Desktop server: ${health.data.version}`);
+    await log("SDK client created successfully");
     return client;
   } catch (e) {
-    await log(`Failed to connect to Desktop: ${e.message}`, "error");
+    await log(`Failed to create SDK client: ${e.message}`, "error");
     return null;
   }
 }
 
-// Helper function to create session for worktree
-async function createSessionForWorktree(worktreePath, issueNum, issueTitle, hookContext, client, sessionID) {
+// Helper to create session for worktree
+async function createSessionForWorktree(worktreePath, issueNum, issueTitle, context) {
   await log(`Creating session for worktree: ${worktreePath}`);
   
-  // Create Desktop-connected client
-  let desktopClient = null;
-  try {
-    desktopClient = await createDesktopClient();
-  } catch (e) {
-    await log(`Could not create Desktop client: ${e.message}`, "warn");
-  }
+  // Create client from context's serverUrl
+  const sdkClient = await createClientFromContext(context);
   
-  const hookClient = desktopClient || hookContext?.client || client;
-  const hookSessionID = hookContext?.sessionID || sessionID;
-
-  if (!hookClient) {
-    await log("No client available for session creation", "error");
-    console.log(`[auto-session] ⚠️  Manual session creation required: opencode ${worktreePath}`);
+  if (!sdkClient) {
+    await log("No SDK client available", "error");
+    console.log(`[auto-session] ⚠️  Manual session creation: opencode ${worktreePath}`);
     return;
   }
 
+  const sessionID = context?.sessionID;
+
   try {
-    const childSession = await hookClient.session.create({
+    const childSession = await sdkClient.session.create({
       query: { directory: worktreePath },
       body: {
-        parentID: hookSessionID,
+        parentID: sessionID,
         title: `Issue #${issueNum || 'unknown'}: ${issueTitle || 'Worktree Session'}`,
       },
     });
 
-    await log(`Session created: ${childSession.id}`, "success");
-    console.log(`[auto-session] ✅ Created session: ${childSession.id}`);
+    await log(`✅ Session created: ${childSession.data?.id || childSession.id}`, "success");
+    console.log(`[auto-session] ✅ Created session: ${childSession.data?.id || childSession.id}`);
 
-    // Send context
+    // Send context to new session
     try {
-      await hookClient.session.prompt({
-        path: { id: childSession.id },
+      await sdkClient.session.prompt({
+        path: { id: childSession.data?.id || childSession.id },
         body: {
           parts: [{ 
             type: "text", 
-            text: `## GitHub Issue #${issueNum || 'unknown'}\n\n**${issueTitle || 'Worktree Session'}**\n\nWorktree: ${worktreePath}` 
+            text: `## GitHub Issue #${issueNum || 'unknown'}\n\n**${issueTitle || 'Worktree Session'}**\n\nWorktree: ${worktreePath}\n\nReady to work on this issue!` 
           }],
         },
       });
-      await log(`Context sent to session`, "success");
+      await log("Context sent to session", "success");
     } catch (promptError) {
       await log(`Failed to send context: ${promptError.message}`, "error");
     }
@@ -150,15 +86,11 @@ async function createSessionForWorktree(worktreePath, issueNum, issueTitle, hook
 }
 
 export default async function autoSessionPlugin(args, context) {
-  // Store context values if available
-  const client = context?.client;
-  const directory = context?.directory;
-  const sessionID = context?.sessionID;
-
-  await log(`=== AUTO-SESSION PLUGIN INITIALIZED ===`);
-  await log(`Session ID: ${sessionID || 'not available'}`);
-  await log(`Directory: ${directory || 'not available'}`);
-  await log(`Client available: ${!!client}`);
+  // Log what we have in context
+  await log("=== AUTO-SESSION PLUGIN INITIALIZED ===");
+  await log(`serverUrl: ${context?.serverUrl || 'NOT AVAILABLE'}`);
+  await log(`sessionID: ${context?.sessionID || 'NOT AVAILABLE'}`);
+  await log(`directory: ${context?.directory || 'NOT AVAILABLE'}`);
 
   // Return the hook handlers
   return {
@@ -166,51 +98,23 @@ export default async function autoSessionPlugin(args, context) {
     "tool.execute.after": async (input, output, hookContext) => {
       await log(`Hook fired for tool: ${input?.tool || 'unknown'}`);
 
-      // Check if this is a worktree trigger from bash tool
+      // Check for WORKTREE trigger in bash output
       if (input.tool === "bash") {
         const bashOutput = output?.metadata?.output || output?.output || "";
         const worktreeMatch = bashOutput.match(/WORKTREE:([^:]+):([^:]+):(.*)/);
         
         if (worktreeMatch) {
-          await log(`Detected WORKTREE trigger from bash`);
+          await log("🎯 WORKTREE trigger detected!");
           
           const worktreePath = worktreeMatch[1];
           const issueNum = worktreeMatch[2];
           const issueTitle = worktreeMatch[3];
           
-          await log(`Worktree: ${worktreePath}, Issue: #${issueNum} ${issueTitle}`);
+          await log(`Worktree: ${worktreePath}`);
+          await log(`Issue: #${issueNum} - ${issueTitle}`);
           
-          // Create session
-          await createSessionForWorktree(worktreePath, issueNum, issueTitle, hookContext, client, sessionID);
-        }
-        return;
-      }
-      
-      // Also check worktree-prepare output (hooks may not fire for custom tools)
-      if (input.tool === "worktree-prepare") {
-        await log(`Detected worktree-prepare execution`);
-        
-        let result;
-        try {
-          const rawOutput = output?.output;
-          if (rawOutput) {
-            const outputStr = typeof rawOutput === "string" ? rawOutput : JSON.stringify(rawOutput);
-            result = JSON.parse(outputStr);
-            
-            if (result.status === "success" || result.status === "already_exists") {
-              await log(`Parsed worktree from tool: ${result.worktreePath}`);
-              await createSessionForWorktree(
-                result.worktreePath, 
-                result.issue?.number, 
-                result.issue?.title,
-                hookContext,
-                client,
-                sessionID
-              );
-            }
-          }
-        } catch (e) {
-          await log(`Could not parse worktree output: ${e.message}`, "warn");
+          // Create session using hookContext (has serverUrl)
+          await createSessionForWorktree(worktreePath, issueNum, issueTitle, hookContext);
         }
         return;
       }
