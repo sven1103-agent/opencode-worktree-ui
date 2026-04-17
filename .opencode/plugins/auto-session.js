@@ -41,15 +41,16 @@ export default async function autoSessionPlugin(args, context) {
           try {
             await log("Spawning opencode CLI...");
             
-            // Use Bun.$ to spawn opencode in background
-            const result = await Bun.$`opencode ${worktreePath} &`.nothrow();
+            // Use Bun.spawn() for proper background process
+            const proc = Bun.spawn(["opencode", worktreePath], {
+              detached: true,
+              stdio: ["ignore", "ignore", "ignore"]
+            });
             
-            if (result.exitCode === 0 || result.exitCode === null) {
-              await log("✅ opencode spawned successfully", "success");
-              console.log(`[auto-session] ✅ Opening worktree in new session: ${worktreePath}`);
-            } else {
-              await log(`opencode spawn returned exit code: ${result.exitCode}`, "warn");
-            }
+            // Don't await - let it run in background
+            await log(`✅ opencode spawned with PID: ${proc.pid}`, "success");
+            console.log(`[auto-session] ✅ Opening worktree in new session: ${worktreePath}`);
+            
           } catch (e) {
             await log(`Failed to spawn opencode: ${e.message}`, "error");
             console.log(`[auto-session] ⚠️  Manual: opencode ${worktreePath}`);
