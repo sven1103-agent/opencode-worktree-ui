@@ -13,7 +13,7 @@ async function log(message, level = "info") {
   }
 }
 
-export default async function autoSessionPlugin(args, context) {
+export default async function autoSessionPlugin(context) {
   // Log ALL properties from PluginInput
   await log("=== PLUGIN INITIALIZED ===");
   await log(`All context keys: ${Object.keys(context || {}).join(", ")}`);
@@ -29,19 +29,42 @@ export default async function autoSessionPlugin(args, context) {
       await log(`Hook fired: ${input.tool}`);
       await log(`Input sessionID: ${input.sessionID || "NOT FOUND"}`);
 
-      // Check for WORKTREE trigger
-      if (input.tool !== "bash") return;
+      let worktreePath = null;
+      let issueNum = null;
+      let issueTitle = null;
 
-      const bashOutput = output?.metadata?.output || output?.output || "";
-      await log(`Bash output: ${bashOutput.substring(0, 100)}`);
+      // Check for worktree-prepare tool
+      if (input.tool === "worktree-prepare") {
+        await log("Detected worktree-prepare tool execution");
+        try {
+          const result = output?.metadata?.output || output?.output || "";
+          const parsed = JSON.parse(result);
+          if (parsed.status === "success" || parsed.status === "already_exists") {
+            worktreePath = parsed.worktreePath;
+            issueNum = parsed.issue?.number || "0";
+            issueTitle = parsed.issue?.title || "Worktree";
+            await log(`Parsed worktree: ${worktreePath}`);
+          }
+        } catch (e) {
+          await log(`Failed to parse worktree-prepare output: ${e.message}`, "error");
+        }
+      }
+      // Check for WORKTREE trigger in bash
+      else if (input.tool === "bash") {
+        const bashOutput = output?.metadata?.output || output?.output || "";
+        await log(`Bash output: ${bashOutput.substring(0, 100)}`);
 
-      const match = bashOutput.match(/WORKTREE:(\/[^:]+):(\d+):(.+)/);
-      if (!match) return;
+        const match = bashOutput.match(/WORKTREE:(\/[^:]+):(\d+):(.+)/);
+        if (match) {
+          worktreePath = match[1];
+          issueNum = match[2];
+          issueTitle = match[3];
+        }
+      }
+
+      if (!worktreePath) return;
 
       await log("🎯 WORKTREE detected!");
-      const worktreePath = match[1];
-      const issueNum = match[2];
-      const issueTitle = match[3];
       const sessionID = input.sessionID;
 
       await log(`Path: ${worktreePath}`);

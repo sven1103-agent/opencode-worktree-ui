@@ -61,22 +61,17 @@ export default tool({
     
     // Find server port and switch session
     try {
-      let port = null;
-      try {
-        const result = await Bun.$`lsof -i TCP -P 2>/dev/null | grep opencode | grep LISTEN | head -1`.nothrow();
-        if (result.exitCode === 0 && result.stdout) {
-          const portMatch = result.stdout.match(/:(\d+)/);
-          if (portMatch) port = parseInt(portMatch[1], 10);
-        }
-      } catch {}
+      // Get port from lsof
+      const portResult = await Bun.$`lsof -i TCP -P 2>/dev/null | grep opencode | grep LISTEN | head -1 | grep -o ':\\d*' | sed 's/://'`.nothrow().text();
+      const port = parseInt(portResult.trim(), 10);
       
-      if (!port) {
+      if (!port || isNaN(port)) {
         return [
           `✅ Worktree created`,
           `Branch: ${branchName}`,
           `Path: ${worktreePath}`,
           ``,
-          `⚠️ Auto-switch not available (no server port)`,
+          `⚠️ Auto-switch not available (port detection failed: ${portResult})`,
           `👉 Manual: cd ${worktreePath}`,
         ].join("\n");
       }
