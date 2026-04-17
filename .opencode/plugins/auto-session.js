@@ -24,7 +24,8 @@ export default async function autoSessionPlugin(args, context) {
       // Check for WORKTREE trigger in bash output
       if (input.tool === "bash") {
         const bashOutput = output?.metadata?.output || output?.output || "";
-        const worktreeMatch = bashOutput.match(/WORKTREE:([^:]+):([^:]+):(.*)/);
+        // Stricter regex: path must start with /, issueNum must be digits
+        const worktreeMatch = bashOutput.match(/WORKTREE:(\/[^:]+):(\d+):(.+)/);
         
         if (worktreeMatch) {
           await log("🎯 WORKTREE trigger detected!");
