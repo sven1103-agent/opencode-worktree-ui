@@ -17,34 +17,23 @@ async function log(message, level = "info") {
 // Try to find OpenCode Desktop server port
 async function findDesktopPort() {
   try {
-    // First try to detect from running process
-    try {
-      const psOutput = await Bun.$`lsof -i TCP -P | grep opencode | grep LISTEN | awk '{print $9}' | head -1`.text();
-      if (psOutput) {
-        const match = psOutput.match(/:(\d+)$/);
-        if (match) {
-          const port = parseInt(match[1], 10);
-          await log(`Found Desktop port from process: ${port}`);
-          return port;
-        }
-      }
-    } catch {
-      // Fallback to port scanning
-    }
-    
-    // Common ports Desktop might use
-    const ports = [4096, 50132, 50133, 50134, 50329, 8080, 3000];
+    // Common ports Desktop might use (based on observed behavior)
+    const ports = [50132, 50329, 4096, 8080, 3000, 5000, 50133, 50134];
     
     for (const port of ports) {
       try {
-        // Use Bun.$ for reliable port checking
-        const result = await Bun.$`curl -s -o /dev/null -w "%{http_code}" http://127.0.0.1:${port}/health`.nothrow();
-        if (result.exitCode === 0) {
-          const statusCode = result.stdout.trim();
-          if (statusCode === "200") {
-            await log(`Found OpenCode server on port ${port}`);
-            return port;
-          }
+        // Quick fetch with short timeout
+        const controller = new AbortController();
+        const timeout = setTimeout(() => controller.abort(), 300);
+        
+        const response = await fetch(`http://127.0.0.1:${port}/health`, {
+          signal: controller.signal
+        });
+        clearTimeout(timeout);
+        
+        if (response.ok) {
+          await log(`Found OpenCode server on port ${port}`);
+          return port;
         }
       } catch {
         // Port not responding, try next
@@ -127,21 +116,26 @@ export default async function autoSessionPlugin(args, context) {
         let result;
         try {
           const rawOutput = output.result;
-          await log(`Raw output: ${rawOutput}`);
+          await log(`Raw output: ${rawOutput?.substring(0, 100)}`);
+
+          if (!rawOutput) {
+            await log("No output from tool", "error");
+            return;
+          }
 
           // Handle both string and object output
           const outputStr = typeof rawOutput === "string" ? rawOutput : JSON.stringify(rawOutput);
           result = JSON.parse(outputStr);
 
-          await log(`Parsed result: ${JSON.stringify(result)}`);
+          await log(`Parsed result: ${JSON.stringify(result)?.substring(0, 200)}`);
         } catch (parseError) {
           await log(`Failed to parse tool output: ${parseError.message}`, "error");
           console.error("[auto-session] Failed to parse worktree-prepare output:", parseError.message);
           return;
         }
 
-        // Validate the result
-        if (result.status !== "success") {
+        // Validate the result (success or already_exists are both valid)
+        if (result.status !== "success" && result.status !== "already_exists") {
           await log(`Tool did not succeed, skipping session creation: ${result.status}`, "warn");
           return;
         }
