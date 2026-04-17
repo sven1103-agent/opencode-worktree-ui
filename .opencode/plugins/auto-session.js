@@ -115,7 +115,8 @@ export default async function autoSessionPlugin(args, context) {
         // Parse the tool output JSON
         let result;
         try {
-          const rawOutput = output.result;
+          // The tool return value is in output.output (not output.result)
+          const rawOutput = output?.output;
           await log(`Raw output: ${rawOutput?.substring(0, 100)}`);
 
           if (!rawOutput) {
