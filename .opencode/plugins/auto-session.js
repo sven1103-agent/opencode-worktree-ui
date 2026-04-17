@@ -86,17 +86,27 @@ async function createSessionForWorktree(worktreePath, issueNum, issueTitle, cont
 }
 
 export default async function autoSessionPlugin(args, context) {
-  // Log what we have in context
+  // Log ALL properties of context
   await log("=== AUTO-SESSION PLUGIN INITIALIZED ===");
+  await log(`Context type: ${typeof context}`);
+  await log(`Context keys: ${context ? Object.keys(context).join(', ') : 'null'}`);
   await log(`serverUrl: ${context?.serverUrl || 'NOT AVAILABLE'}`);
   await log(`sessionID: ${context?.sessionID || 'NOT AVAILABLE'}`);
   await log(`directory: ${context?.directory || 'NOT AVAILABLE'}`);
+  await log(`worktree: ${context?.worktree || 'NOT AVAILABLE'}`);
+  await log(`client type: ${typeof context?.client}`);
+  await log(`$ type: ${typeof context?.$}`);
+  await log(`project type: ${typeof context?.project}`);
 
   // Return the hook handlers
   return {
     // Hook: Fires after any tool executes
     "tool.execute.after": async (input, output, hookContext) => {
       await log(`Hook fired for tool: ${input?.tool || 'unknown'}`);
+      await log(`hookContext keys: ${hookContext ? Object.keys(hookContext).join(', ') : 'null'}`);
+      await log(`hookContext.serverUrl: ${hookContext?.serverUrl || 'NOT AVAILABLE'}`);
+      await log(`hookContext.sessionID: ${hookContext?.sessionID || 'NOT AVAILABLE'}`);
+      await log(`hookContext.client type: ${typeof hookContext?.client}`);
 
       // Check for WORKTREE trigger in bash output
       if (input.tool === "bash") {
