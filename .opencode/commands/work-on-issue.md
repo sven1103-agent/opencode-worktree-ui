@@ -10,8 +10,11 @@ This command creates a dedicated git worktree for a GitHub issue and automatical
 
 1. **Extract** - Parses the GitHub issue URL to identify the repository and issue number
 2. **Prepare** - Calls the `worktree-prepare` tool to create an isolated worktree
-3. **Auto-Session** - (If plugin loaded) Automatically creates a new OpenCode session in the worktree
-4. **Context** - The new session receives the issue title, description, labels, and branch info
+3. **Trigger** - Runs a bash command to signal the plugin hook
+4. **Auto-Session** - (If plugin loaded) Automatically creates a new OpenCode session in the worktree
+5. **Context** - The new session receives the issue title, description, labels, and branch info
+
+**Note:** The auto-session plugin triggers on bash commands (not custom tools). After worktree creation, a bash command sends the worktree path to the plugin hook.
 
 ## Usage
 
@@ -26,6 +29,29 @@ This command creates a dedicated git worktree for a GitHub issue and automatical
 /work-on-issue https://github.com/owner/repo/issues/123 baseBranch=develop
 /work-on-issue https://github.com/owner/repo/issues/123 customBranchName=my-custom-branch
 ```
+
+## Workflow
+
+### Step 1: Parse Issue
+Extract the GitHub issue URL and fetch details via gh CLI if available.
+
+### Step 2: Create Worktree
+Call `worktree-prepare` tool with:
+- `issueUrl`: The GitHub issue URL
+- `baseBranch`: Current branch or main
+
+### Step 3: Trigger Auto-Session (Critical)
+**The plugin hook only fires on BUILT-IN tools, not custom tools.**
+
+After worktree creation, call bash tool with:
+```
+echo "WORKTREE:{path}:{issueNum}:{issueTitle}" && cd {path} && pwd
+```
+
+The plugin watches for "WORKTREE:" in bash output and creates the session.
+
+### Step 4: Confirm Success
+Show worktree details and session status.
 
 ## Automatic Features
 
