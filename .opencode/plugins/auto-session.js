@@ -132,6 +132,7 @@ export default async function autoSessionPlugin(args, context) {
       // Check for WORKTREE trigger
       if (input.tool === "bash") {
         const bashOutput = output?.metadata?.output || output?.output || "";
+        await log(`Bash output: ${bashOutput?.substring(0, 100)}`);
         const worktreeMatch = bashOutput.match(/WORKTREE:(\/[^:]+):(\d+):(.+)/);
         
         if (worktreeMatch) {
