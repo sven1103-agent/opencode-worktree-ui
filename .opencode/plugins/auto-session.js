@@ -13,18 +13,21 @@ async function log(message, level = "info") {
   }
 }
 
-export const AutoSessionPlugin = {
-  async execute(args, context) {
-    const { client, directory, sessionID } = context;
+export default async function autoSessionPlugin(args, context) {
+  // Store context values if available
+  const client = context?.client;
+  const directory = context?.directory;
+  const sessionID = context?.sessionID;
 
-    await log(`=== AUTO-SESSION PLUGIN INITIALIZED ===`);
-    await log(`Session ID: ${sessionID}`);
-    await log(`Directory: ${directory}`);
+  await log(`=== AUTO-SESSION PLUGIN INITIALIZED ===`);
+  await log(`Session ID: ${sessionID || 'not available'}`);
+  await log(`Directory: ${directory || 'not available'}`);
+  await log(`Client available: ${!!client}`);
 
-    // Return the hook handlers
-    return {
+  // Return the hook handlers (always return hooks, they check for client when firing)
+  return {
       // Hook: Fires after any tool executes
-      "tool.execute.after": async (input, output) => {
+      "tool.execute.after": async (input, output, hookContext) => {
         await log(`Tool executed: ${input.tool}`);
 
         // Check if our target tool ran successfully
@@ -33,6 +36,10 @@ export const AutoSessionPlugin = {
         }
 
         await log(`Detected worktree-prepare execution`);
+        
+        // Get client from hook context or stored context
+        const hookClient = hookContext?.client || client;
+        const hookSessionID = hookContext?.sessionID || sessionID;
 
         // Parse the tool output JSON
         let result;
@@ -89,12 +96,18 @@ export const AutoSessionPlugin = {
 
         // Create the child session using SDK
         try {
+          if (!hookClient) {
+            await log("SDK client not available - cannot auto-create session", "error");
+            console.log("[auto-session] ⚠️  SDK not available, manual session creation required");
+            return;
+          }
+          
           await log(`Creating session in: ${worktreePath}`);
 
-          const childSession = await client.session.create({
+          const childSession = await hookClient.session.create({
             query: { directory: worktreePath },
             body: {
-              parentID: sessionID,
+              parentID: hookSessionID,
               title: `Issue #${issueNum}: ${issueTitle}`,
             },
           });
@@ -104,7 +117,7 @@ export const AutoSessionPlugin = {
 
           // Add initial context prompt to the session
           try {
-            await client.session.prompt({
+            await hookClient.session.prompt({
               path: { id: childSession.id },
               body: {
                 parts: [{ type: "text", text: issueContext }],
@@ -141,6 +154,5 @@ export const AutoSessionPlugin = {
           });
         },
       }),
-    };
-  },
-};
+  };
+}
