@@ -1,4 +1,5 @@
 import { tool } from "@opencode-ai/plugin";
+import { createOpencodeClient } from "@opencode-ai/sdk";
 import fs from "node:fs/promises";
 
 const LOG_FILE = "/tmp/opencode-auto-session.log";
@@ -10,6 +11,56 @@ async function log(message, level = "info") {
     await fs.appendFile(LOG_FILE, entry);
   } catch (e) {
     console.error(`[auto-session] Failed to write to log: ${e.message}`);
+  }
+}
+
+// Try to find OpenCode Desktop server port
+async function findDesktopPort() {
+  try {
+    // Common ports Desktop might use
+    const ports = [4096, 50132, 50133, 50134, 8080, 3000];
+    
+    for (const port of ports) {
+      try {
+        const response = await fetch(`http://127.0.0.1:${port}/health`, { 
+          signal: AbortSignal.timeout(500) 
+        });
+        if (response.ok) {
+          await log(`Found OpenCode server on port ${port}`);
+          return port;
+        }
+      } catch {
+        // Port not responding, try next
+      }
+    }
+  } catch (e) {
+    await log(`Error finding port: ${e.message}`, "error");
+  }
+  return null;
+}
+
+// Create SDK client connected to Desktop
+async function createDesktopClient() {
+  const port = await findDesktopPort();
+  if (!port) {
+    await log("Could not find Desktop server port", "error");
+    return null;
+  }
+  
+  const baseUrl = `http://127.0.0.1:${port}`;
+  await log(`Creating SDK client for ${baseUrl}`);
+  
+  try {
+    const client = createOpencodeClient({ baseUrl });
+    
+    // Test the connection
+    const health = await client.global.health();
+    await log(`Connected to Desktop server: ${health.data.version}`);
+    
+    return client;
+  } catch (e) {
+    await log(`Failed to connect to Desktop: ${e.message}`, "error");
+    return null;
   }
 }
 
@@ -37,8 +88,19 @@ export default async function autoSessionPlugin(args, context) {
 
         await log(`Detected worktree-prepare execution`);
         
-        // Get client from hook context or stored context
-        const hookClient = hookContext?.client || client;
+        // Create a Desktop-connected client for session visibility
+        let desktopClient = null;
+        try {
+          desktopClient = await createDesktopClient();
+          if (desktopClient) {
+            await log("Using Desktop-connected SDK client");
+          }
+        } catch (e) {
+          await log(`Failed to create Desktop client: ${e.message}`, "warn");
+        }
+        
+        // Get client from: Desktop client > hook context > stored context
+        const hookClient = desktopClient || hookContext?.client || client;
         const hookSessionID = hookContext?.sessionID || sessionID;
 
         // Parse the tool output JSON
