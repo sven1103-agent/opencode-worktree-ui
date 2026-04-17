@@ -1,0 +1,160 @@
+{
+  "result_id": "worktree-auto-001-0001",
+  "source_handoff_id": "worktree-auto-001-0001",
+  "session_id": "worktree-auto-001",
+  "sequence": 1,
+  "created_at": "2026-04-17T10:35:00Z",
+  "agent": "build",
+  "result_type": "planning_complete",
+  "status": "completed",
+  "summary": "Completed architecture design and handoff preparation for worktree auto-session system. Finalized hybrid approach combining reliable custom tools with SDK-capable plugin hooks.",
+  "deliverables": {
+    "planning": [
+      {
+        "file": "pocs/PLAN.md",
+        "description": "Complete architecture specification with component details, testing strategy, and success criteria",
+        "status": "created"
+      },
+      {
+        "file": ".opencode/sessions/worktree-auto-001/handoffs/0001-build-to-implementer-hybrid-architecture.json",
+        "description": "Structured handoff artifact with full implementation specifications",
+        "status": "created"
+      }
+    ]
+  },
+  "key_decisions": {
+    "architecture": "Hybrid: Custom tool (worktree creation) + Plugin hook (auto-session)",
+    "rationale": "Custom tools are 100% reliable in Desktop; plugins have SDK access but load inconsistently. Hybrid provides best of both with graceful fallback.",
+    "key_learnings": [
+      "ToolContext does not have '$' - must use Bun.$ directly",
+      "Return structured JSON from tools for hooks to parse",
+      "Named exports required for plugins (export const Name)",
+      "Hook tool.execute.after triggers after tool succeeds"
+    ]
+  },
+  "workflow_specifications": {
+    "tool_return_format": {
+      "type": "structured_json",
+      "fields": ["status", "worktreePath", "branchName", "issue", "baseBranch", "baseCommit", "fallback", "error"],
+      "example": "{\"status\":\"success\",\"worktreePath\":\"/path\",\"branchName\":\"fix/bug-123\",...}"
+    },
+    "hook_trigger": {
+      "event": "tool.execute.after",
+      "condition": "input.tool === 'worktree-prepare'",
+      "parse": "JSON.parse(output.result)",
+      "validation": "result.status === 'success'"
+    },
+    "sdk_calls": [
+      "context.client.session.create({ query: { directory }, body: { parentID, title } })",
+      "context.client.session.prompt({ path: { id }, body: { parts: [issueContext] } })"
+    ]
+  },
+  "components_specified": [
+    {
+      "name": "worktree-prepare",
+      "type": "custom_tool",
+      "priority": "P0-critical",
+      "estimated_hours": 2
+    },
+    {
+      "name": "auto-session",
+      "type": "plugin",
+      "priority": "P0-critical",
+      "estimated_hours": 2
+    },
+    {
+      "name": "work-on-issue",
+      "type": "slash_command",
+      "priority": "P1-high",
+      "estimated_hours": 1
+    },
+    {
+      "name": "check-worktree-plugin",
+      "type": "slash_command",
+      "priority": "P2-medium",
+      "estimated_hours": 0.5
+    },
+    {
+      "name": "worktree-ui-skill",
+      "type": "skill_update",
+      "priority": "P1-high",
+      "estimated_hours": 0.5
+    },
+    {
+      "name": "opencode-json",
+      "type": "config_update",
+      "priority": "P0-critical",
+      "estimated_hours": 0.5
+    }
+  ],
+  "total_estimated_effort": "9 hours",
+  "success_metrics": {
+    "mvp": [
+      "/work-on-issue creates worktree",
+      "Tool returns valid JSON",
+      "Worktree visible in git worktree list",
+      "Clear fallback shown"
+    ],
+    "target": [
+      "Plugin hook fires reliably",
+      "Session auto-creates (~80% in Desktop, 100% in serve mode)",
+      "Agent auto-starts",
+      "User can navigate sessions"
+    ]
+  },
+  "risks_documented": {
+    "plugin_loading": {
+      "risk": "Plugin fails to load in Desktop (~20% failure)",
+      "mitigation": "Fallback command always provided; serve mode documented as reliable alternative"
+    },
+    "hook_parsing": {
+      "risk": "JSON parse fails in hook",
+      "mitigation": "Try-catch around parse; validate JSON in tool"
+    },
+    "sdk_failures": {
+      "risk": "client.session.create() throws",
+      "mitigation": "Try-catch all SDK calls; log but don't throw"
+    }
+  },
+  "next_steps": [
+    {
+      "step": 1,
+      "action": "Implementer reads handoff artifact",
+      "duration": "15 minutes"
+    },
+    {
+      "step": 2,
+      "action": "Create auto-session.js plugin with hook",
+      "duration": "2 hours"
+    },
+    {
+      "step": 3,
+      "action": "Create worktree-prepare.ts tool",
+      "duration": "2 hours"
+    },
+    {
+      "step": 4,
+      "action": "Create slash commands",
+      "duration": "1.5 hours"
+    },
+    {
+      "step": 5,
+      "action": "Update skill and config",
+      "duration": "1 hour"
+    },
+    {
+      "step": 6,
+      "action": "Test in Desktop and serve modes",
+      "duration": "2 hours"
+    }
+  ],
+  "verification_checklist": [
+    "Handoff artifact created and validated",
+    "PLAN.md updated with full architecture",
+    "Component specifications complete",
+    "Acceptance criteria defined",
+    "Risk mitigations documented",
+    "Reference implementations identified",
+    "Testing strategy outlined"
+  ]
+}

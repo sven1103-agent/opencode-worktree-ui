@@ -1,0 +1,317 @@
+{
+  "handoff_id": "worktree-auto-001-0001",
+  "parent_handoff_id": null,
+  "session_id": "worktree-auto-001",
+  "sequence": 1,
+  "created_at": "2026-04-17T10:30:00Z",
+  "from_agent": "build",
+  "to_agent": "implementer",
+  "command": "/implement worktree auto-session system",
+  "context": {
+    "user_request": "Build automatic worktree + session creation system for GitHub issues with zero manual steps",
+    "project_state": {
+      "location": "/Users/sven1103/git/opencode-worktree-ui",
+      "existing_files": [
+        ".opencode/tools/worktree-prepare.ts (partial - needs completion)",
+        ".opencode/skills/worktree-ui/SKILL.md (exists - needs update)",
+        ".opencode/plugins/test-session.js (old - ignore/delete)",
+        ".opencode/plugins/index.js (old - ignore/delete)",
+        "src/workflow.js (reference implementation - has SDK logic)"
+      ],
+      "key_learnings": [
+        "Custom tools are 100% reliable but have no SDK access",
+        "Plugins have SDK access but load inconsistently in Desktop",
+        "ToolContext has no '$' property - must use Bun.$ directly",
+        "Hook tool.execute.after can trigger SDK calls after custom tool succeeds",
+        "Return structured JSON from tools for hook to parse"
+      ]
+    }
+  },
+  "plan": {
+    "title": "Worktree Auto-Session System",
+    "description": "Build hybrid architecture combining reliable custom tools with SDK-capable plugin hooks to automatically create worktrees and sessions for GitHub issues",
+    "architecture": "Hybrid: Custom tool (worktree creation) + Plugin hook (session auto-creation)",
+    "components": [
+      {
+        "name": "worktree-prepare",
+        "type": "custom_tool",
+        "file": ".opencode/tools/worktree-prepare.ts",
+        "priority": "P0-critical",
+        "specification": {
+          "args": {
+            "issueUrl": "string - GitHub issue URL",
+            "title": "string? - Optional title override",
+            "customBranchName": "string? - Optional branch name override",
+            "baseBranch": "string? - Default: 'main'"
+          },
+          "returns": "JSON string with structure: { status, worktreePath, branchName, issue, baseBranch, baseCommit, fallback?, error? }",
+          "implementation_notes": [
+            "Use Bun.$ for all shell commands - NEVER use node:fs directly",
+            "Parse GitHub URL to extract owner/repo/issueNum",
+            "If gh CLI available, fetch real issue data (title, labels)",
+            "Generate branch name from labels: bug→fix/, feature→feat/, docs→docs/",
+            "Handle worktree already exists gracefully",
+            "Return absolute paths, not relative",
+            "Include fallback command in response for manual session creation"
+          ]
+        },
+        "acceptance_criteria": [
+          "Tool executes without errors",
+          "Returns valid JSON with all required fields",
+          "Worktree appears in git worktree list",
+          "Handles errors gracefully with status='error' and error message",
+          "Supports both gh CLI and URL-only modes"
+        ]
+      },
+      {
+        "name": "auto-session",
+        "type": "plugin",
+        "file": ".opencode/plugins/auto-session.js",
+        "priority": "P0-critical",
+        "specification": {
+          "export": "Named export: export const AutoSessionPlugin",
+          "method": "async execute(args, context)",
+          "hooks": ["tool.execute.after"],
+          "hook_logic": {
+            "trigger": "input.tool === 'worktree-prepare'",
+            "parse": "JSON.parse(output.result)",
+            "validation": "result.status === 'success'",
+            "actions": [
+              "context.client.session.create({ query: { directory }, body: { parentID, title } })",
+              "context.client.session.prompt({ path: { id }, body: { parts: [{ type: 'text', text: issueContext }] } })"
+            ],
+            "error_handling": "Try-catch all SDK calls, log errors, never throw"
+          },
+          "implementation_notes": [
+            "Use named export syntax (not default export)",
+            "Use async execute(args, context) method syntax",
+            "Parse tool output JSON carefully - wrap in try-catch",
+            "Session title format: 'Issue #N: {title}'",
+            "Issue context prompt should include: title, URL, branch, worktree path",
+            "Log success to console for debugging",
+            "On any error, log the fallback command from tool result"
+          ]
+        },
+        "acceptance_criteria": [
+          "Plugin loads in opencode.json without errors",
+          "Hook fires after worktree-prepare tool execution",
+          "Successfully parses JSON output",
+          "Creates session with correct directory",
+          "Session appears in opencode session list",
+          "Handles SDK errors gracefully (logs but doesn't fail)",
+          "Works in opencode serve mode (100% reliable)",
+          "Works in Desktop when plugin loads (~80% success)"
+        ]
+      },
+      {
+        "name": "work-on-issue",
+        "type": "slash_command",
+        "file": ".opencode/commands/work-on-issue.md",
+        "priority": "P1-high",
+        "specification": {
+          "frontmatter": {
+            "description": "Start work on a GitHub issue in an isolated worktree session"
+          },
+          "content_sections": [
+            "Extract issue information from URL",
+            "Call worktree-prepare tool",
+            "Handle success: confirm worktree, explain auto-session",
+            "Handle failure: explain error, provide manual fallback",
+            "Document that new session receives full context automatically"
+          ],
+          "tone": "Orchestrator - guides user through workflow"
+        },
+        "acceptance_criteria": [
+          "Command accessible via /work-on-issue",
+          "Parses GitHub URL correctly",
+          "Calls worktree-prepare tool with correct args",
+          "Provides clear success/failure messages",
+          "Shows fallback command when appropriate"
+        ]
+      },
+      {
+        "name": "check-worktree-plugin",
+        "type": "slash_command",
+        "file": ".opencode/commands/check-worktree-plugin.md",
+        "priority": "P2-medium",
+        "specification": {
+          "frontmatter": {
+            "description": "Check if auto-session plugin is loaded and working"
+          },
+          "content": "Diagnostic command to verify plugin health"
+        },
+        "acceptance_criteria": [
+          "Detects if plugin is loaded",
+          "Shows plugin status",
+          "Provides troubleshooting if not loaded"
+        ]
+      },
+      {
+        "name": "worktree-ui-skill",
+        "type": "skill_update",
+        "file": ".opencode/skills/worktree-ui/SKILL.md",
+        "priority": "P1-high",
+        "specification": {
+          "new_section": "Auto-Session Architecture",
+          "content": "Document how hybrid architecture works, reliability guarantees, and usage instructions"
+        },
+        "acceptance_criteria": [
+          "Documents architecture clearly",
+          "Explains reliability trade-offs",
+          "Provides usage examples",
+          "Includes troubleshooting section"
+        ]
+      },
+      {
+        "name": "opencode-json",
+        "type": "config_update",
+        "file": "opencode.json",
+        "priority": "P0-critical",
+        "specification": {
+          "add_plugin": ".opencode/plugins/auto-session.js",
+          "add_commands": {
+            "work-on-issue": ".opencode/commands/work-on-issue.md",
+            "check-worktree-plugin": ".opencode/commands/check-worktree-plugin.md"
+          },
+          "verify_agent": "coding-boss with task permissions for planner/implementer/code-reviewer"
+        },
+        "acceptance_criteria": [
+          "Plugin registered in opencode.json",
+          "Commands registered in opencode.json",
+          "JSON is valid and schema-compliant"
+        ]
+      }
+    ],
+    "execution_order": [
+      "1. Update opencode.json (register plugin and commands)",
+      "2. Create auto-session.js plugin with hook",
+      "3. Create worktree-prepare.ts tool",
+      "4. Create work-on-issue.md command",
+      "5. Create check-worktree-plugin.md command",
+      "6. Update SKILL.md",
+      "7. Test: Clear cache, restart Desktop, verify plugin loads",
+      "8. Test: Run /work-on-issue with test URL",
+      "9. Test: Verify worktree created",
+      "10. Test: Verify session auto-created (if plugin loaded)",
+      "11. Test: Verify fallback works when plugin doesn't load"
+    ],
+    "reference_implementations": {
+      "workflow.js": "src/workflow.js has SDK session creation logic (lines 194-209)",
+      "test-session.js": ".opencode/plugins/test-session.js has plugin structure (but old syntax)",
+      "worktree-prepare.ts": ".opencode/tools/worktree-prepare.ts exists but incomplete"
+    }
+  },
+  "constraints": {
+    "must_use": [
+      "Bun.$ for all shell commands (not node:fs)",
+      "Named exports for plugins (export const Name)",
+      "async execute(args, context) method syntax",
+      "Structured JSON return from tools",
+      "Try-catch around all SDK calls",
+      "Absolute paths in all outputs"
+    ],
+    "must_not": [
+      "Use context.$ (doesn't exist)",
+      "Use default export for plugins",
+      "Throw errors from hooks",
+      "Use node:fs directly",
+      "Block on SDK failures",
+      "Return plain text from tools (must be JSON)"
+    ],
+    "testing_requirements": [
+      "Clear cache and restart Desktop between tests",
+      "Test in both Desktop and opencode serve modes",
+      "Test edge cases: invalid URL, no git repo, worktree exists",
+      "Verify with git worktree list command",
+      "Verify with opencode session list command"
+    ]
+  },
+  "deliverables": {
+    "files": [
+      ".opencode/tools/worktree-prepare.ts",
+      ".opencode/plugins/auto-session.js",
+      ".opencode/commands/work-on-issue.md",
+      ".opencode/commands/check-worktree-plugin.md",
+      ".opencode/skills/worktree-ui/SKILL.md (updated)",
+      "opencode.json (updated)"
+    ],
+    "documentation": [
+      "README update with installation",
+      "Troubleshooting guide",
+      "Architecture decision record"
+    ],
+    "tests": [
+      "Tool unit tests (worktree creation)",
+      "Hook integration tests",
+      "End-to-end workflow test",
+      "Edge case tests"
+    ]
+  },
+  "estimated_effort": {
+    "custom_tool": "2 hours",
+    "plugin": "2 hours",
+    "commands": "1 hour",
+    "skill_update": "30 minutes",
+    "config": "30 minutes",
+    "testing": "2 hours",
+    "documentation": "1 hour",
+    "total": "~9 hours"
+  },
+  "success_criteria": {
+    "mvp": [
+      "/work-on-issue creates worktree automatically",
+      "Tool returns valid structured JSON",
+      "Worktree visible in git worktree list",
+      "Clear fallback message shown"
+    ],
+    "good_ux": [
+      "Plugin hook fires reliably",
+      "Session auto-creates when plugin loads",
+      "New session appears in Desktop UI",
+      "Agent auto-starts with context"
+    ],
+    "polish": [
+      "Plugin health check works",
+      "GitHub CLI integration",
+      "Branch naming from labels",
+      "Config file support"
+    ]
+  },
+  "risks_and_mitigations": {
+    "plugin_not_loading": {
+      "risk": "Plugin fails to load in Desktop mode",
+      "probability": "Medium (20% failure rate)",
+      "impact": "Auto-session fails but worktree created",
+      "mitigation": "Fallback command always shown; document serve mode as reliable alternative"
+    },
+    "hook_parse_error": {
+      "risk": "JSON parsing fails in hook",
+      "probability": "Low",
+      "impact": "Auto-session fails",
+      "mitigation": "Try-catch around parse; validate JSON in tool; log error clearly"
+    },
+    "sdk_session_creation_fails": {
+      "risk": "client.session.create() throws",
+      "probability": "Low",
+      "impact": "No session created",
+      "mitigation": "Try-catch around SDK calls; log error; don't throw"
+    }
+  },
+  "verification_steps": {
+    "pre_implementation": [
+      "Read pocs/PLAN.md for full architecture",
+      "Review reference implementations in src/",
+      "Understand Bun.$ vs context.$ distinction",
+      "Review existing .opencode/tools/worktree-prepare.ts"
+    ],
+    "post_implementation": [
+      "Clear cache: rm -rf ~/Library/Caches/opencode",
+      "Restart OpenCode Desktop completely",
+      "Test: /work-on-issue https://github.com/user/repo/issues/1",
+      "Verify: git worktree list shows new worktree",
+      "Verify: opencode session list shows new session (if plugin loaded)",
+      "Test in opencode serve mode for 100% reliability",
+      "Test edge cases: invalid URL, worktree exists, no git repo"
+    ]
+  }
+}

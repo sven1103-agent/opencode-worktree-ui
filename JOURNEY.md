@@ -225,6 +225,137 @@ Slash commands call tools. The `wt-new` command already exists and calls `worktr
 - Main plugin: `~/git/idea-factory/.opencode/plugins/opencode-worktree-ui.js`
 - Config example: `~/git/opencode-worktree-ui/.opencode/issue-workflow.json`
 
+## Update: Custom Tools Work (April 17, 2026)
+
+After abandoning the plugin approach, we successfully implemented **custom tools** in `.opencode/tools/`.
+
+### ✅ What Works: Custom Tools
+
+Custom tools are **much simpler than plugins** and load reliably in OpenCode Desktop.
+
+#### Key Discovery: ToolContext vs Bun.$
+
+**The critical mistake in early attempts:**
+```javascript
+// ❌ WRONG - ToolContext does NOT have '$'
+async execute(args, context) {
+  const { directory, $ } = context;  // $ is undefined!
+  await $`git worktree add ...`;      // Fails
+}
+```
+
+**The correct approach (per docs):**
+```javascript
+// ✅ CORRECT - Use Bun.$ directly
+async execute(args, context) {
+  const { directory, worktree, sessionID, agent } = context;
+  await Bun.$`git worktree add -b ${branchName} ${worktreePath} ${baseBranch}`;
+}
+```
+
+#### Working Tool Example
+
+**File**: `.opencode/tools/worktree-prepare.ts`
+
+```typescript
+import { tool } from "@opencode-ai/plugin";
+import path from "path";
+
+export default tool({
+  description: "Create a synced git worktree from a descriptive title",
+  args: {
+    title: tool.schema.string().describe("Descriptive title"),
+  },
+  async execute(args, context) {
+    const { directory } = context;
+    const branchName = args.title
+      .toLowerCase()
+      .replace(/[^a-z0-9\s-]/g, "")
+      .replace(/\s+/g, "-")
+      .substring(0, 50);
+    
+    // Find repo root
+    const repoRoot = (await Bun.$`git rev-parse --show-toplevel`
+      .cwd(directory).text()).trim();
+    
+    const worktreePath = path.join(repoRoot, ".worktrees", branchName);
+    
+    // Create worktree
+    await Bun.$`git worktree add -b ${branchName} ${worktreePath} main`
+      .cwd(repoRoot);
+    
+    return `Created worktree at: ${worktreePath}`;
+  },
+});
+```
+
+**Tool name becomes the filename**: `worktree-prepare.ts` → `worktree-prepare` tool
+
+#### ToolContext Properties
+
+Available in `context`:
+- `directory` - Current project directory for this session
+- `worktree` - Project worktree root (for relative paths)
+- `sessionID` - Unique session identifier
+- `messageID` - Current message identifier
+- `agent` - Agent name
+- `abort` - AbortSignal for cancellation
+- `metadata()` - Add metadata to tool result
+- `ask()` - Request user permission
+
+**NOT available**: `$` (shell execution) - use `Bun.$` instead
+
+### Test Results
+
+✅ `test-simple` tool - Returns context info correctly  
+✅ `worktree-prepare` tool - Creates worktree from title  
+✅ `worktree-session` tool - Creates worktree with path info  
+
+### Limitation: Custom Tools Cannot Create Sessions
+
+Custom tools run in isolated contexts and **do NOT have access to the OpenCode SDK client**. They cannot:
+- Call `client.session.create()`
+- Call `client.session.prompt()`
+- Access other SDK methods
+
+**Workaround**: Custom tools can create the worktree and return the path, then the user manually opens it:
+```
+opencode /path/to/worktree
+```
+
+### TypeScript Compilation
+
+**No compilation needed!** OpenCode Desktop handles TypeScript directly.
+
+Files in `.opencode/tools/*.ts` are loaded and executed by Bun at runtime.
+
+### File Structure
+
+```
+.opencode/tools/
+├── test-simple.ts        # Basic test tool
+├── worktree-prepare.ts   # Creates worktree from title
+└── worktree-session.ts   # Creates worktree (returns path)
+```
+
+### Why Custom Tools Are Better Than Plugins
+
+| Aspect | Plugins | Custom Tools |
+|--------|---------|--------------|
+| Loading | Unreliable in Desktop | ✅ Reliable |
+| Complexity | High (lifecycle, hooks) | ✅ Low (single function) |
+| SDK Access | ✅ Full access | ❌ No `client` access |
+| Cache Issues | Frequent restarts needed | ✅ Minimal |
+| Debuggability | Hard (invisible to AI) | ✅ Easy (AI sees tool) |
+
+### Recommendation
+
+**For session creation**: Use external SDK script or `opencode serve` mode  
+**For worktree creation**: Use custom tools (simple, reliable)  
+**For full workflow**: Combine custom tools (worktree creation) with manual session opening or external automation
+
 ## Conclusion
 
-The technical implementation is sound - sessions can be created, worktrees can be managed, and agents can be auto-started. However, the OpenCode Desktop plugin loading mechanism introduces significant unpredictability that makes the user experience unreliable. For production use, the `opencode serve` + SDK client approach would be more stable.
+The technical implementation is sound - sessions can be created, worktrees can be managed, and agents can be auto-started. However, the OpenCode Desktop plugin loading mechanism introduces significant unpredictability that makes the user experience unreliable. 
+
+**Working solution**: Custom tools for worktree creation (reliable, simple) combined with external session management (via SDK or manual commands) for the full workflow.
