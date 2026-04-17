@@ -130,7 +130,24 @@ try {
 | worktree-prepare | 100% | 100% | N/A |
 | auto-session plugin | ~80% | 100% | Manual session |
 | Worktree creation | 100% | 100% | N/A |
-| Session creation | ~80% | 100% | `/work-on-issue` shows fallback |
+| Session creation (SDK) | 100% | 100% | N/A |
+| Session visibility in Desktop | Manual open | Auto shows | Run `opencode <path>` |
+
+### Important: Session Visibility
+
+**Sessions ARE created successfully** via the SDK (proven by `opencode session list`), but Desktop doesn't automatically display them in the UI. This is expected behavior - Desktop maintains its own session view.
+
+**To see the session:**
+```bash
+# Option 1: Open directly
+opencode /path/to/worktree
+
+# Option 2: Use serve mode (always works)
+cd /path/to/worktree && opencode serve
+
+# Option 3: Navigate in Desktop
+# Use session switcher or open recent
+```
 
 ### Fallback Behavior
 When the plugin doesn't load, the tool output includes a fallback command:
