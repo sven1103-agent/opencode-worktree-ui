@@ -36,19 +36,29 @@ export default async function autoSessionPlugin(args, context) {
           
           await log(`Worktree: ${worktreePath}`);
           await log(`Issue: #${issueNum} - ${issueTitle}`);
-          await log(`Session ID: ${input?.sessionID || 'unknown'}`);
+          await log(`input.sessionID: ${input?.sessionID || 'unknown'}`);
+          await log(`hookContext keys: ${hookContext ? Object.keys(hookContext).join(', ') : 'null'}`);
+          await log(`hookContext.client type: ${typeof hookContext?.client}`);
+          await log(`hookContext.sessionID: ${hookContext?.sessionID || 'null'}`);
           
           // SMART WORKFLOW: Update current session to worktree
           try {
             await log("Updating current session to worktree...");
             
-            // Use hookContext which has the client
+            // Try to get client from hookContext or input
             const client = hookContext?.client;
             const sessionID = input?.sessionID || hookContext?.sessionID;
             
-            if (!client || !sessionID) {
-              await log("No client or sessionID available", "error");
-              console.log(`[auto-session] ⚠️  Manual switch: cd ${worktreePath}`);
+            await log(`Resolved client: ${client ? 'YES' : 'NO'}, sessionID: ${sessionID || 'NO'}`);
+            
+            if (!client) {
+              await log("No SDK client available - cannot auto-switch session", "error");
+              console.log(`[auto-session] ⚠️  Manual: cd ${worktreePath}`);
+              return;
+            }
+            
+            if (!sessionID) {
+              await log("No sessionID available", "error");
               return;
             }
             
