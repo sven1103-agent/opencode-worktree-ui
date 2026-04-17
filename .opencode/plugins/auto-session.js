@@ -17,17 +17,34 @@ async function log(message, level = "info") {
 // Try to find OpenCode Desktop server port
 async function findDesktopPort() {
   try {
+    // First try to detect from running process
+    try {
+      const psOutput = await Bun.$`lsof -i TCP -P | grep opencode | grep LISTEN | awk '{print $9}' | head -1`.text();
+      if (psOutput) {
+        const match = psOutput.match(/:(\d+)$/);
+        if (match) {
+          const port = parseInt(match[1], 10);
+          await log(`Found Desktop port from process: ${port}`);
+          return port;
+        }
+      }
+    } catch {
+      // Fallback to port scanning
+    }
+    
     // Common ports Desktop might use
-    const ports = [4096, 50132, 50133, 50134, 8080, 3000];
+    const ports = [4096, 50132, 50133, 50134, 50329, 8080, 3000];
     
     for (const port of ports) {
       try {
-        const response = await fetch(`http://127.0.0.1:${port}/health`, { 
-          signal: AbortSignal.timeout(500) 
-        });
-        if (response.ok) {
-          await log(`Found OpenCode server on port ${port}`);
-          return port;
+        // Use Bun.$ for reliable port checking
+        const result = await Bun.$`curl -s -o /dev/null -w "%{http_code}" http://127.0.0.1:${port}/health`.nothrow();
+        if (result.exitCode === 0) {
+          const statusCode = result.stdout.trim();
+          if (statusCode === "200") {
+            await log(`Found OpenCode server on port ${port}`);
+            return port;
+          }
         }
       } catch {
         // Port not responding, try next
@@ -79,10 +96,13 @@ export default async function autoSessionPlugin(args, context) {
   return {
       // Hook: Fires after any tool executes
       "tool.execute.after": async (input, output, hookContext) => {
-        await log(`Tool executed: ${input.tool}`);
+        await log(`Hook fired for tool: ${input?.tool || 'unknown'}`);
+        await log(`Input: ${JSON.stringify(input)}`);
+        await log(`Output type: ${typeof output}`);
+        await log(`Output: ${JSON.stringify(output)?.slice(0, 200)}`);
 
         // Check if our target tool ran successfully
-        if (input.tool !== "worktree-prepare") {
+        if (input?.tool !== "worktree-prepare") {
           return;
         }
 
