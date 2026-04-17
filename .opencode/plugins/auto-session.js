@@ -15,7 +15,7 @@ async function log(message, level = "info") {
 
 export default async function autoSessionPlugin(args, context) {
   await log("=== AUTO-SESSION PLUGIN INITIALIZED ===");
-  await log("Plugin ready - using CLI-based session creation");
+  await log("Smart workflow: Update current session to worktree");
 
   return {
     "tool.execute.after": async (input, output, hookContext) => {
@@ -24,7 +24,7 @@ export default async function autoSessionPlugin(args, context) {
       // Check for WORKTREE trigger in bash output
       if (input.tool === "bash") {
         const bashOutput = output?.metadata?.output || output?.output || "";
-        // Stricter regex: path must start with /, issueNum must be digits
+        // Stricter regex: path starts with /, issueNum is digits
         const worktreeMatch = bashOutput.match(/WORKTREE:(\/[^:]+):(\d+):(.+)/);
         
         if (worktreeMatch) {
@@ -34,27 +34,56 @@ export default async function autoSessionPlugin(args, context) {
           const issueNum = worktreeMatch[2];
           const issueTitle = worktreeMatch[3];
           
-          await log(`Opening worktree via CLI: ${worktreePath}`);
+          await log(`Worktree: ${worktreePath}`);
           await log(`Issue: #${issueNum} - ${issueTitle}`);
+          await log(`Session ID: ${input?.sessionID || 'unknown'}`);
           
-          // Spawn new opencode instance for the worktree
-          // This opens in a new Desktop window/tab
+          // SMART WORKFLOW: Update current session to worktree
           try {
-            await log("Spawning opencode CLI...");
+            await log("Updating current session to worktree...");
             
-            // Use Bun.spawn() for proper background process
-            const proc = Bun.spawn(["opencode", worktreePath], {
-              detached: true,
-              stdio: ["ignore", "ignore", "ignore"]
+            // Use hookContext which has the client
+            const client = hookContext?.client;
+            const sessionID = input?.sessionID || hookContext?.sessionID;
+            
+            if (!client || !sessionID) {
+              await log("No client or sessionID available", "error");
+              console.log(`[auto-session] ⚠️  Manual switch: cd ${worktreePath}`);
+              return;
+            }
+            
+            // Update session directory to worktree
+            await client.session.update({
+              path: { id: sessionID },
+              body: {
+                directory: worktreePath,
+                title: `Issue #${issueNum}: ${issueTitle}`,
+              },
             });
             
-            // Don't await - let it run in background
-            await log(`✅ opencode spawned with PID: ${proc.pid}`, "success");
-            console.log(`[auto-session] ✅ Opening worktree in new session: ${worktreePath}`);
+            await log("✅ Session updated to worktree!", "success");
+            console.log(`[auto-session] ✅ Switched to worktree: ${worktreePath}`);
+            
+            // Send context message
+            try {
+              await client.session.prompt({
+                path: { id: sessionID },
+                body: {
+                  noReply: true, // Don't trigger AI response, just set context
+                  parts: [{ 
+                    type: "text", 
+                    text: `## GitHub Issue #${issueNum}\n\n**${issueTitle}**\n\nNow working in worktree: ${worktreePath}` 
+                  }],
+                },
+              });
+              await log("Context message sent", "success");
+            } catch (e) {
+              await log(`Failed to send context: ${e.message}`, "warn");
+            }
             
           } catch (e) {
-            await log(`Failed to spawn opencode: ${e.message}`, "error");
-            console.log(`[auto-session] ⚠️  Manual: opencode ${worktreePath}`);
+            await log(`Failed to update session: ${e.message}`, "error");
+            console.log(`[auto-session] ⚠️  Manual: cd ${worktreePath}`);
           }
         }
         return;
